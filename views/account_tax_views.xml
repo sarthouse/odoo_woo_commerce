@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- account.tax -->
+    <record id="view_account_tax_form_inherit" model="ir.ui.view">
+        <field name="name">account.tax.form.inherit</field>
+        <field name="model">account.tax</field>
+        <field name="inherit_id" ref="account.view_tax_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='name']" position="after">
+                <field name="woo_id" readonly="1"/>
+                <field name="woo_instance_id" readonly="1"/>
+                <field name="is_exported" readonly="1"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_account_tax_tree_inherit" model="ir.ui.view">
+        <field name="name">account.tax.tree.inherit</field>
+        <field name="model">account.tax</field>
+        <field name="inherit_id" ref="account.view_tax_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//tree" position="attributes">
+                <attribute name="js_class">woo_import_tax_button</attribute>
+            </xpath>
+            <xpath expr="//field[@name='description']" position="after">
+                <field name="woo_id" readonly="1"/>
+                <field name="woo_instance_id" readonly="1"/>
+                <field name="is_exported" readonly="1"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_account_tax_search_inherit" model="ir.ui.view">
+        <field name="name">view.account.tax.search.inherit</field>
+        <field name="model">account.tax</field>
+        <field name="inherit_id" ref="account.view_account_tax_search"/>
+        <field name="arch" type="xml">
+            <search>
+                <filter string="Woo Synced Taxes" name="woo_imported_taxes" domain="[('is_exported', '=', True)]"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_account_tax_woo" model="ir.actions.act_window">
+        <field name="name">Taxes</field>
+        <field name="res_model">account.tax</field>
+        <field name="view_mode">tree,kanban,form</field>
+        <field name="context">{'search_default_woo_imported_taxes': True, 'active_test': False}
+        </field>
+        <field name="view_id" ref="account.view_tax_tree"/>
+    </record>
+
+    <!-- account.tax.group -->
+    <record id="view_account_taxgroup_form_inherited" model="ir.ui.view">
+        <field name="name">account.tax.group.form.inherit</field>
+        <field name="model">account.tax.group</field>
+        <field name="inherit_id" ref="account.view_tax_group_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='sequence']" position="after">
+                <field name="woo_instance_id" readonly="1"/>
+                <field name="is_exported" readonly="1"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_tax_group_wooc_search_inherit" model="ir.ui.view">
+        <field name="name">view.account.tax.group.search.inherit</field>
+        <field name="model">account.tax.group</field>
+        <field name="inherit_id" ref="account.account_tax_group_view_search"/>
+        <field name="arch" type="xml">
+            <xpath expr="//filter[@name='group_by_country']" position="after">
+                <filter string="Woo Synced TaxClasses" name="woo_imported_taxgroups"
+                        domain="[('is_exported', '=', True)]"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="action_tax_group_wooc" model="ir.actions.act_window">
+        <field name="name">Tax Classes</field>
+        <field name="res_model">account.tax.group</field>
+        <field name="view_mode">tree,form</field>
+        <field name="view_id" ref="account.view_tax_group_tree"/>
+        <field name="context">{'search_default_woo_imported_taxgroups': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a new tax group
+            </p>
+        </field>
+    </record>
+
+    <record id="account.view_tax_group_tree" model="ir.ui.view">
+        <field name="name">account.tax.group.tree</field>
+        <field name="model">account.tax.group</field>
+        <field name="arch" type="xml">
+            <tree string="Account Tax Group" create="true">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="country_id"/>
+                <field name="country_code" invisible="True"/>
+                <field name="preceding_subtotal" optional="hide"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_account_tax_group_inherit" model="ir.ui.view">
+        <field name="name">account.tax.group.tree.inherit</field>
+        <field name="model">account.tax.group</field>
+        <field name="inherit_id" ref="account.view_tax_group_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//tree" position="attributes">
+                <attribute name="js_class">woo_import_tax_class_button</attribute>
+            </xpath>
+
+        </field>
+    </record>
+
+</odoo>
+

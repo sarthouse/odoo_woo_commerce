@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_woo_authentication_response_wizard_form" model="ir.ui.view">
+        <field name="name">woo.authentication.response.wizard.form.view</field>
+        <field name="model">woo.authentication.response.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Select Instance">
+                <sheet>
+                    <h5>
+                        <field name="authentication_response"/>
+                    </h5>
+                </sheet>
+                <footer>
+                    <button string="Close" special="cancel" class="btn-primary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+</odoo>
+

@@ -813,7 +813,7 @@ class Product(models.Model):
                                     # Calcular la diferencia de cantidad con respecto al stock reportado en WooCommerce
                                     difference = stock_quantity - total_quantity_in_lots
 
-                                    # Si hay una diferencia positiva, distribuirla entre los lotes
+                                    # Si hay una diferencia positiva, aumentar el stock en lote más antiguo
                                     if difference > 0:
                                         difference
                                         oldest_lot = lots[0]
@@ -827,32 +827,58 @@ class Product(models.Model):
                                         else:
                                             self.env['stock.quant'].sudo().create({
                                                 'product_id': product.id,
-                                                
+                                                'location_id': location_id,
+                                                'quantity':difference,
+                                                'lot_id':oldest_lot.id,
+                                                'company_id':self.env.company.id
                                             })
+                                    # Si hay una diferencia negativa, reducir el stock del lote más antiguo
+                                    elif difference < 0:
+                                        oldest_lot = lots[0]
+                                        quant = self.env['stock.quant'].search([
+                                            ('product_id', '=', product.id),
+                                            ('location_id', '=', location_id),
+                                            ('lot_id', '=', oldest_lot.id)
+                                        ], limit=1)
 
-                            res_product_qty = self.env['stock.change.product.qty'].sudo().search([('product_id', '=', product.id)], limit=1)
-                            dict_q = {
-                                'new_quantity': stock_quantity,
-                                'product_id': product.id,
-                                'product_tmpl_id': product.product_tmpl_id.id
-                            }
-
-                            if not res_product_qty:
-                                try:
-                                    create_qty = self.env['stock.change.product.qty'].sudo().create(dict_q)
-                                    create_qty.change_product_qty()
-                                except Exception as error:
-                                    _logger.error(f"Error al crear stock en Odoo para el producto {product.name}: {error}")
+                                        if quant and quant.quantity >= abs(difference):
+                                            quant.sudo().write({'quantity':quant.quantity + difference})
+                                        else:
+                                            raise UserError(_("No se puede reducir más stock del lote más antiguo porque la cantidad es insuficiente"))
+                                else:
+                                    # Si no existen lotes, crear un nuevo lote y asignar todo el stock a él
+                                    lote = self.env['stock.lot'].sudo().create({
+                                        'name': f"L000-{product.default_code}",
+                                        'product_id': product.id,
+                                        'company_id':self.env.company.id
+                                    })
+                                    self.env['stock.quant'].sudo().create({
+                                        'product_id': product.id,
+                                        'location_id': location_id,
+                                        'quantity': stock_quantity,
+                                        'lot_id': lot.id,
+                                        'company_id': self.env.company.id
+                                    })
                             else:
-                                try:
-                                    res_product_qty.sudo().write(dict_q)
-                                    res_product_qty.change_product_qty()
-                                except Exception as error:
-                                    _logger.error(f"Error al actualizar stock en Odoo para el producto {product.name}: {error}")
-                    
-                    product = self.env['product.template'].sudo().search(
+                                # Si no hay seguimiento por lotes, simplemente actualizar la cantidad total
+                                quant = self.env['stock.quant'].sudo().search([
+                                    ('product_id', '=', product.id),
+                                    ('location_id', '=', location_id)
+                                ], limit=1)
+
+                                if quant:
+                                    quant.sudo().write({'quantity':stock_quantity})
+                                else:
+                                    self.env['stock.quant'].sudo().create({
+                                        'product_id':product.id,
+                                        'location_id': location_id,
+                                        'quantity': stock_quantity,
+                                        'company_id': self.env.company.id
+                                    })
+                    # Repetir para las variantes del producto
+                    product_template = self.env['product.template'].sudo().search(
                             ['|', ('woo_id', '=', ele.get('id')), ('default_code', '=', ele.get('sku'))], limit=1)
-                    if product and product.woo_id:
+                    if product_template and product_template.woo_id:
                         try:
                             variations_data = wcapi.get(f'products/{product.woo_id}/variations')
                             
@@ -860,29 +886,66 @@ class Product(models.Model):
                                 for ele in variations_data.json():
                                     stock_quantity = ele.get('stock_quantity')
                                     if stock_quantity is not None:
-                                        product_p = self.env['product.product'].sudo().search(
+                                        product = self.env['product.product'].sudo().search(
                                             ['|', ('woo_id', '=', ele.get('id')), ('default_code', '=', ele.get('sku'))], limit=1)
-                                        if product_p:
-                                            res_product_qty = self.env['stock.change.product.qty'].sudo().search(
-                                                [('product_id', '=', product_p.id)],
-                                                limit=1)
-                                            dict_q = {
-                                                'new_quantity': stock_quantity,
-                                                'product_id': product_p.id,
-                                                'product_tmpl_id': product_p.product_tmpl_id.id
-                                            }
-                                            if not res_product_qty:
-                                                try:
-                                                    create_qty = self.env['stock.change.product.qty'].sudo().create(dict_q)
-                                                    create_qty.change_product_qty()
-                                                except Exception as error:
-                                                    _logger.error(f"Error al crear stock en Odoo para la variante {product_p.name}: {error}")
+                                        if product:
+                                            if product.tracking != 'none':
+                                                # Procesamos las cantidades de stock por lote
+                                                lots = self.env['stock.lot'].sudo().search(
+                                                    [('product_id','=', product.id)], order='create_dat asc')
+                                                
+                                                # Obtengo las cantidades de stock actuales para los lotes existentes
+                                                total_quantity_in_lots = sum(self.env['stock.quant'].sudo().search([
+                                                    ('product_id', '=', product.id),
+                                                    ('location_id', '=', location_id),
+                                                    ('lot_id', '=', lots.id)
+                                                ]).mapped('quantity'))
+
+                                                difference = stock_quantity - total_quantity_in_lots
+
+                                                if difference > 0:
+                                                    oldest_lot = lots[0]
+                                                    quant = self.env['stock.quant'].sudo().search([
+                                                        ('product_id', '=', product.id),
+                                                        ('location_id', '=', location_id),
+                                                        ('lot_id', '=', oldest_lot.id),
+                                                    ], limit=1)
+                                                    if quant:
+                                                        quant.sudo().write({'quantity':quant.quantity + difference})
+                                                    else:
+                                                        self.env['stock.quant'].sudo().create({
+                                                            'product_id':product.id,
+                                                            'location_id':location_id,
+                                                            'quantity':difference,
+                                                            'lot_id':oldest_lot.id,
+                                                            'company_id':self.env.company.id
+                                                        })
+                                                elif difference < 0:
+                                                    oldest_lot = lots[0]
+                                                    quant = self.env['stock.quant'].sudo().search([
+                                                        ('product_id', '=', product.id),
+                                                        ('location_id', '=', location_id),
+                                                        ('lot_id', '=', oldest_lot.id)
+                                                    ], limit=1)
+                                                    if quant and quant.quantity >= abs(difference):
+                                                        quant.sudo().write({'quantity': quant.quantity + difference})
+                                                    else:
+                                                        raise UserError(_("No se puede reducir más stock del lote más antiguo porque la cantidad es insuficiente."))
                                             else:
-                                                try:
-                                                    res_product_qty.sudo().write(dict_q)
-                                                    res_product_qty.change_product_qty()
-                                                except Exception as error:
-                                                    _logger.error(f"Error al actualizar stock en Odoo para la variante {product_p.name}: {error}")
+                                                quant = self.env['stock.quant'].sudo().search([
+                                                    ('product_id', '=', product_variant.id),
+                                                    ('location_id', '=', location_id)
+                                                ], limit=1)
+
+                                                if quant:
+                                                    quant.sudo().write({'quantity': stock_quantity})
+                                                else:
+                                                    self.env['stock.quant'].sudo().create({
+                                                        'product_id': product_variant.id,
+                                                        'location_id': location_id,
+                                                        'quantity': stock_quantity,
+                                                        'company_id': self.env.company.id
+                                                    })                                        
                         except Exception as error:
                             _logger.error(f"Error al obtener las variantes del producto {product.name} desde WooCommerce: {error}")
             else:

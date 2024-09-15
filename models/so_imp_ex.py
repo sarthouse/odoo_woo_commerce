@@ -10,14 +10,18 @@ from odoo.tools import config
 
 config['limit_time_real'] = 10000000
 
-AFTER_ORDERS = "2024-09-17T00:00:00"
+AFTER_ORDERS = "2024-09-16T00:00:00"
 
 
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
 
     woo_id = fields.Char('WooCommerce ID')
-    payment_type = fields.Selection([('bacs', 'Transferencia Bancaria'), ('woo-mercado-pago-basic', 'MercadoPago'), ('prepaid', 'Prepagado')], "Forma de pago")
+    payment_type = fields.Selection([
+        ('bacs', 'Transferencia Bancaria'), 
+        ('woo-mercado-pago-basic', 'MercadoPago'), 
+        ('prepaid', 'Prepagado')
+    ], "Forma de pago")
     is_exported = fields.Boolean('Sincronizado con Woo', default=False)
     woo_instance_id = fields.Many2one('woo.instance', ondelete='cascade')
     woo_status = fields.Selection([
@@ -28,7 +32,8 @@ class SaleOrder(models.Model):
         ('cancelled', 'Cancelado'),
         ('refunded', 'Devuelto'),
         ('failed', 'Falló'),
-        ('trash', 'Papelera')
+        ('trash', 'Papelera'),
+        ('wanderlust-meli', 'Mercado Libre')
     ], "Estado del pedido")
     woo_order_url = fields.Char("Link del pedido")
     woo_note = fields.Char('Woo Remarks')
@@ -322,8 +327,11 @@ class SaleOrder(models.Model):
                         if not sale_order:
                             dict_s['woo_id'] = ele.get('id')
                             if ele.get('customer_id') == 0:
-                                if ele.get('billing') and ele.get('billing').get('email'):
-                                    email = ele.get('billing').get('email')
+                                email = ele.get('billing').get('email')
+                                if ele.get('status') == 'wanderlus-meli':
+                                    email=f"sin-mail-{ele.get('id')}@mercadolibre.com.ar"
+
+                                if ele.get('billing') and email:
                                     if email:
                                         res_partner = self.env['res.partner'].sudo().search([('email', '=', email)],
                                                                                             limit=1)

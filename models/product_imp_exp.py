@@ -72,7 +72,7 @@ class ProductProduct(models.Model):
         all_instances = self.env['woo.instance'].sudo().search([])
         for rec in all_instances:
             if rec:
-                self.env['product.product'].export_selected_product(rec)
+                self.env['product.product'].export_selected_product_variant(rec)
 
     def export_selected_product_variant(self, instance_id):
         location = instance_id.url
@@ -86,7 +86,7 @@ class ProductProduct(models.Model):
         selected_ids = self.env.context.get('active_ids', [])
         if selected_ids:
             records = self.env['product.product'].sudo().browse(
-                [selected_ids]).filtered(lambda p: p.woo_id or p.is_exported)
+                selected_ids).filtered(lambda p: p.woo_id or p.is_exported)
         else:
             self.env['product.product'].sudo().search([
                 ('is_exported', '=', True),
@@ -98,8 +98,9 @@ class ProductProduct(models.Model):
                 product_data_list.append({
                     "id": rec.woo_id,
                     "name": rec.product_tmpl_id.woo_id,
-                    "manage_stock": True,
-                    "stock_quantity": rec.qty_available
+                    'data':{
+                        "stock_quantity": rec.qty_available
+                    }
                 })
 
         if product_data_list:
@@ -107,29 +108,19 @@ class ProductProduct(models.Model):
                 try:
                     if data.get('id'):
                         response = wcapi.put(
-                            "products/%s/variations/%s" % (data.get('name'), data.get('id')), data)
+                            "products/%s/variations/%s" % (data.get('name'), data.get('id')), data.get('data'))
                         if response.status_code != 200:
                             message = response.json().get('message')
                             _logger.error(
                                 f"Error al actualizar la variante {data.get('id')}: {message}")
                             raise UserError(
                                 _("Error al actualizar variante en WooCommerce"))
-                    else:
-                        data.pop('id')
-                        response = wcapi.post(
-                            f"products/{int(data.get('name'))}/variations", data)
-                        if response.status_code != 200:
-                            message = response.json().get('message')
-                            _logger.error(
-                                f"Error al crear variante: {message}")
-                            raise UserError(
-                                _("Error al crear variante en WooCommerce"))
                 except Exception as error:
                     _logger.error(
                         f"Error durante la exportación de la variante: {str(error)}")
                     raise UserError(
                         _("Error de conexión, por favor intente nuevamente"))
-        self.env['product.template'].import_product(instance_id)
+        self.env['product.template'].import_inventory(instance_id)
 
 
 class Product(models.Model):
@@ -150,6 +141,7 @@ class Product(models.Model):
     woo_product_length = fields.Float("Largo")
     woo_product_width = fields.Float("Ancho")
     woo_product_height = fields.Float("Alto")
+    website_published = fields.Boolean()
     woo_weight_unit = fields.Char(compute='_compute_weight_uom_name')
     woo_unit_other = fields.Char(compute='_compute_length_uom_name')
     woo_image_ids = fields.One2many("woo.product.image", "template_id")
@@ -217,10 +209,12 @@ class Product(models.Model):
                 self.env['product.template'].export_selected_product(rec)
 
     def export_selected_product(self, instance_id):
+
         location = instance_id.url
         cons_key = instance_id.client_id
         sec_key = instance_id.client_secret
         version = 'wc/v3'
+        pass
 
         wcapi = API(url=location, consumer_key=cons_key,
                     consumer_secret=sec_key, version=version)
@@ -244,14 +238,12 @@ class Product(models.Model):
             if not rec.has_variant:
                 # Actualizamos el stock solo para productos simples que ya existen en WooCommerce
                 product_data = {
-                    "id": rec.woo_id,
-                    "manage_stock": True,
                     "stock_quantity": rec.qty_available,
                 }
 
                 try:
                     response = wcapi.put(
-                        f"products/{product_data.get('id')}", product_data)
+                        f"products/{rec.woo_id}", product_data)
                     if response.status_code != 200:
                         message = response.json().get('message', 'Error desconocido')
                         _logger.error(
@@ -272,8 +264,6 @@ class Product(models.Model):
                 # Si el producto tiene variantes, actualizamos el stock de cada variante
                 for variant in rec.product_variant_ids.filtered(lambda v: v.woo_id):
                     variant_data = {
-                        "id": variant.woo_id,
-                        "manage_stock": True,
                         "stock_quantity": variant.qty_available,
                     }
 
